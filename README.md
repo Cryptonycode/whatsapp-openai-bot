@@ -39,4 +39,4 @@ En la consola de Twilio:
 - Pega tu URL pública (ej: https://miapp.up.railway.app/webhook)
 - Asegúrate de que el método sea `POST`
 
-¡Listo! Ya tienes un bot de WhatsApp + IA funcionando 🚀
+¡Listo! Ya tienes un bot de WhatsApp + IA funcionando 🚀,

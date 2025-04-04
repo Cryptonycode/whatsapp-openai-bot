@@ -93,6 +93,6 @@ app.get('/', (req, res) => {
 // Inicia servidor
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor activo en http://0.0.0.0:${PORT}`);
-  console.log('Esperando mensajes entrantes desde Twilio...');
 });
+
 
