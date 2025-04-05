@@ -74,6 +74,7 @@ const getOpenAIResponse = async (message) => {
 
 // Ruta del webhook para recibir mensajes de Twilio
 app.post('/webhook', async (req, res) => {
+  console.log("está entrando por la ruta webwock");
   const from = req.body.From?.replace('whatsapp:', '') || '';
   const message = req.body.Body || '';
 
