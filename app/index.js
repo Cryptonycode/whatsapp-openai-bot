@@ -93,4 +93,5 @@ app.get('/', (req, res) => {
 // Inicia servidor
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor activo en:${PORT}`);
+  console.log("RAILWAY_PUBLIC_DOMAIN", process.env.RAILWAY_PUBLIC_DOMAIN);
 });
