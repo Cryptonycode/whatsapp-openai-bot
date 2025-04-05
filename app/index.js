@@ -5,11 +5,10 @@ const express = require('express');
 const axios = require('axios');
 const bodyParser = require('body-parser');
 
+// Inicializar Express
 const app = express();
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
 
-// Variables de entorno
+// Definir variables desde el entorno
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL;
@@ -17,30 +16,24 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
-// Validación de entorno
-if (!OPENAI_API_KEY || !OPENAI_MODEL || !TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
-  console.error('❌ ERROR: Falta alguna variable de entorno necesaria.');
-  process.exit(1);
-}
+// Configurar middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Función para enviar mensajes por WhatsApp usando Twilio
+// Configurar cliente de Twilio
+const twilio = require('twilio')(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+
+// Función para enviar mensajes de WhatsApp usando Twilio
 const sendWhatsAppMessage = async (to, message) => {
   try {
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
-    const data = new URLSearchParams({
-      From: `whatsapp:${TWILIO_PHONE_NUMBER}`,
-      To: `whatsapp:${to}`,
-      Body: message,
+    await twilio.messages.create({
+      body: message,
+      from: `whatsapp:${TWILIO_PHONE_NUMBER}`,
+      to: `whatsapp:${to}`
     });
-
-    await axios.post(url, data, {
-      auth: {
-        username: TWILIO_ACCOUNT_SID,
-        password: TWILIO_AUTH_TOKEN,
-      },
-    });
+    console.log(`📤 Mensaje enviado a ${to}`);
   } catch (error) {
-    console.error('❌ Error enviando mensaje por WhatsApp:', error.response?.data || error.message);
+    console.error('❌ Error enviando mensaje de WhatsApp:', error);
   }
 };
 
@@ -74,16 +67,24 @@ const getOpenAIResponse = async (message) => {
 
 // Ruta del webhook para recibir mensajes de Twilio
 app.post('/webhook', async (req, res) => {
-  console.log("está entrando por la ruta webwock");
-  const from = req.body.From?.replace('whatsapp:', '') || '';
-  const message = req.body.Body || '';
+  try {
+    console.log("Webhook recibido:", req.body);
+    
+    const from = req.body.From?.replace('whatsapp:', '') || '';
+    const message = req.body.Body || '';
 
-  console.log(`📥 Mensaje recibido de ${from}: ${message}`);
+    console.log(`📥 Mensaje recibido de ${from}: ${message}`);
 
-  const aiResponse = await getOpenAIResponse(message);
-  await sendWhatsAppMessage(from, aiResponse);
+    if (message) {
+      const aiResponse = await getOpenAIResponse(message);
+      await sendWhatsAppMessage(from, aiResponse);
+    }
 
-  res.status(200).send('OK');
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Error en webhook:', error);
+    res.status(200).send('Error procesado');  // Seguimos enviando 200 para que Twilio no reintente
+  }
 });
 
 // Ruta de prueba
@@ -91,8 +92,41 @@ app.get('/', (req, res) => {
   res.send('🟢 Servidor WhatsApp + OpenAI operativo.');
 });
 
+// Ruta de diagnóstico
+app.get('/test', (req, res) => {
+  res.json({
+    status: 'ok',
+    envVars: {
+      hasOpenAIKey: !!OPENAI_API_KEY,
+      hasOpenAIModel: !!OPENAI_MODEL,
+      hasTwilioSID: !!TWILIO_ACCOUNT_SID,
+      hasTwilioToken: !!TWILIO_AUTH_TOKEN,
+      hasTwilioPhone: !!TWILIO_PHONE_NUMBER
+    }
+  });
+});
+
+// Manejo de errores
+app.use((err, req, res, next) => {
+  console.error('Error en Express:', err);
+  res.status(500).send('Error interno en el servidor');
+});
+
+// Manejo de promesas no controladas
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Promesa rechazada no manejada:', reason);
+});
+
+// Manejo de excepciones no capturadas
+process.on('uncaughtException', (err) => {
+  console.error('Excepción no capturada:', err);
+  // No terminamos el proceso para que Railway no reinicie constantemente
+});
+
 // Inicia servidor
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor activo en:${PORT}`);
-  console.log("RAILWAY_PUBLIC_DOMAIN", process.env.RAILWAY_PUBLIC_DOMAIN);
+  console.log(`🚀 Servidor activo en puerto: ${PORT}`);
+  console.log("RAILWAY_PUBLIC_DOMAIN:", process.env.RAILWAY_PUBLIC_DOMAIN);
+}).on('error', (err) => {
+  console.error('Error al iniciar el servidor:', err);
 });
