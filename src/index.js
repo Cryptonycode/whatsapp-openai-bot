@@ -10,7 +10,7 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 // Variables de entorno
-const PORT = process.env.PORT ?? 3000;
+const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL;
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
@@ -91,6 +91,6 @@ app.get('/', (req, res) => {
 });
 
 // Inicia servidor
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor activo:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor activo en:${PORT}`);
 });
