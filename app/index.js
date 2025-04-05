@@ -162,4 +162,29 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN);
 }).on('error', (err) => {
   console.error('❌ Error al iniciar el servidor:', err.message);
+
+  // ... (código anterior sin cambios) ...
+
+// Inicia servidor
+console.log('🔍 Intentando iniciar el servidor...');
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor activo en puerto: ${PORT}`);
+  console.log('RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN);
+}).on('error', (err) => {
+  console.error('❌ Error al iniciar el servidor:', err.message);
+});
+
+// Log periódico para confirmar que el servidor sigue activo
+setInterval(() => {
+  console.log('🔍 Servidor sigue activo...');
+}, 5000); // Log cada 5 segundos
+
+// Manejar el evento SIGTERM
+process.on('SIGTERM', () => {
+  console.log('⚠️ Recibido SIGTERM. Cerrando el servidor...');
+  server.close(() => {
+    console.log('✅ Servidor cerrado correctamente.');
+    process.exit(0);
+  });
+});
 });
