@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "app/index.js",
   "scripts": {
-      "start": "./start.sh"
+      "start": "node app/index.js"
   },
   "dependencies": {
       "axios": "^1.6.0",
