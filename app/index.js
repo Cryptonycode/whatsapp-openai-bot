@@ -9,6 +9,7 @@ console.log('OPENAI_MODEL:', process.env.OPENAI_MODEL ? 'Definida' : 'No definid
 console.log('TWILIO_ACCOUNT_SID:', process.env.TWILIO_ACCOUNT_SID ? 'Definido' : 'No definido');
 console.log('TWILIO_AUTH_TOKEN:', process.env.TWILIO_AUTH_TOKEN ? 'Definido' : 'No definido');
 console.log('TWILIO_PHONE_NUMBER:', process.env.TWILIO_PHONE_NUMBER ? 'Definido' : 'No definido');
+console.log("🧪 Versión de Node en Railway:", process.version);
 
 const express = require('express');
 const axios = require('axios');
