@@ -96,7 +96,7 @@ const getOpenAIResponse = async (message) => {
   }
 };
 
-// Ruta del webhook para recibir mensajes de Twilio
+// Ruta del webhook para recibir mensajes de Twilio.
 app.post('/webhook', async (req, res) => {
   try {
     console.log('🔍 Webhook recibido:', req.body);
