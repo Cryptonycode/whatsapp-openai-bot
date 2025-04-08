@@ -44,7 +44,7 @@ try {
   twilio = null; // Evita que el servidor falle si Twilio no se puede inicializar
 }
 
-// Función para enviar mensajes de WhatsApp usando Twilio
+// Función para enviar mensajes de WhatsApp usando Twilio.
 const sendWhatsAppMessage = async (to, message) => {
   if (!twilio) {
     console.error('❌ Cliente de Twilio no está inicializado. No se puede enviar el mensaje.');
