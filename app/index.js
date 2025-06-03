@@ -21,6 +21,7 @@ const app = express();
 // Definir variables desde el entorno
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
@@ -61,51 +62,46 @@ const sendWhatsAppMessage = async (to, message) => {
 
 // Función para interactuar con el asistente
 const callAssistant = async (userMessage) => {
-  try {
-    const threadRes = await axios.post('https://api.openai.com/v1/threads', {}, {
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    });
+  const headers = {
+    Authorization: `Bearer ${OPENAI_API_KEY}`,
+    'Content-Type': 'application/json',
+    'OpenAI-Beta': 'assistants=v2'
+  };
 
+  try {
+    // Crear thread
+    const threadRes = await axios.post('https://api.openai.com/v1/threads', {}, { headers });
     const threadId = threadRes.data.id;
 
+    // Añadir mensaje del usuario
     await axios.post(`https://api.openai.com/v1/threads/${threadId}/messages`, {
       role: 'user',
       content: userMessage
-    }, {
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    }, { headers });
 
+    // Ejecutar assistant
     const runRes = await axios.post(`https://api.openai.com/v1/threads/${threadId}/runs`, {
-      assistant_id: process.env.OPENAI_ASSISTANT_ID
-    }, {
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      }
-    });
+      assistant_id: OPENAI_ASSISTANT_ID
+    }, { headers });
 
     const runId = runRes.data.id;
     let status = 'in_progress';
 
+    // Esperar a que termine la ejecución
     while (status !== 'completed' && status !== 'failed') {
       await new Promise(resolve => setTimeout(resolve, 1500));
       const runStatus = await axios.get(
         `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,
-        { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }
+        { headers }
       );
       status = runStatus.data.status;
     }
 
+    // Obtener respuesta
     if (status === 'completed') {
       const messagesRes = await axios.get(
         `https://api.openai.com/v1/threads/${threadId}/messages`,
-        { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }
+        { headers }
       );
       const lastMessage = messagesRes.data.data.find(msg => msg.role === 'assistant');
       return lastMessage?.content[0]?.text?.value || 'Respuesta no disponible.';
@@ -148,7 +144,7 @@ app.get('/test', (req, res) => {
     status: 'ok',
     envVars: {
       hasOpenAIKey: !!OPENAI_API_KEY,
-      hasAssistantId: !!process.env.OPENAI_ASSISTANT_ID,
+      hasAssistantId: !!OPENAI_ASSISTANT_ID,
       hasTwilioSID: !!TWILIO_ACCOUNT_SID,
       hasTwilioToken: !!TWILIO_AUTH_TOKEN,
       hasTwilioPhone: !!TWILIO_PHONE_NUMBER
