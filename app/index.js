@@ -69,17 +69,14 @@ const callAssistant = async (userMessage) => {
   };
 
   try {
-    // Crear thread
     const threadRes = await axios.post('https://api.openai.com/v1/threads', {}, { headers });
     const threadId = threadRes.data.id;
 
-    // Añadir mensaje del usuario
     await axios.post(`https://api.openai.com/v1/threads/${threadId}/messages`, {
       role: 'user',
       content: userMessage
     }, { headers });
 
-    // Ejecutar assistant
     const runRes = await axios.post(`https://api.openai.com/v1/threads/${threadId}/runs`, {
       assistant_id: OPENAI_ASSISTANT_ID
     }, { headers });
@@ -87,7 +84,6 @@ const callAssistant = async (userMessage) => {
     const runId = runRes.data.id;
     let status = 'in_progress';
 
-    // Esperar a que termine la ejecución
     while (status !== 'completed' && status !== 'failed') {
       await new Promise(resolve => setTimeout(resolve, 1500));
       const runStatus = await axios.get(
@@ -97,14 +93,17 @@ const callAssistant = async (userMessage) => {
       status = runStatus.data.status;
     }
 
-    // Obtener respuesta
     if (status === 'completed') {
       const messagesRes = await axios.get(
         `https://api.openai.com/v1/threads/${threadId}/messages`,
         { headers }
       );
       const lastMessage = messagesRes.data.data.find(msg => msg.role === 'assistant');
-      return lastMessage?.content[0]?.text?.value || 'Respuesta no disponible.';
+
+      // 🔧 Eliminar referencias de fuente como [4:0†source]
+      let rawResponse = lastMessage?.content[0]?.text?.value || 'Respuesta no disponible.';
+      let cleanedResponse = rawResponse.replace(/\[\d+:\d+[^\]]*\]/g, '').trim();
+      return cleanedResponse;
     } else {
       return 'El asistente no pudo generar una respuesta.';
     }
