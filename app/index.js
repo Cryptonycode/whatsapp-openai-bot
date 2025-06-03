@@ -5,7 +5,6 @@ console.log('🔍 Iniciando servidor...');
 console.log('🔍 Verificando variables de entorno:');
 console.log('PORT:', process.env.PORT || 3000);
 console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'Definida' : 'No definida');
-console.log('OPENAI_MODEL:', process.env.OPENAI_MODEL ? 'Definida' : 'No definida');
 console.log('TWILIO_ACCOUNT_SID:', process.env.TWILIO_ACCOUNT_SID ? 'Definido' : 'No definido');
 console.log('TWILIO_AUTH_TOKEN:', process.env.TWILIO_AUTH_TOKEN ? 'Definido' : 'No definido');
 console.log('TWILIO_PHONE_NUMBER:', process.env.TWILIO_PHONE_NUMBER ? 'Definido' : 'No definido');
@@ -13,7 +12,6 @@ console.log("🧪 Versión de Node en Railway:", process.version);
 
 const express = require('express');
 const axios = require('axios');
-const bodyParser = require('body-parser');
 
 console.log('🔍 Dependencias cargadas correctamente');
 
@@ -23,12 +21,11 @@ const app = express();
 // Definir variables desde el entorno
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL;
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
-// Configurar middleware
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -40,14 +37,14 @@ try {
   twilio = require('twilio')(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
   console.log('🔍 Cliente de Twilio configurado correctamente');
 } catch (error) {
-  console.error('❌ Error al configurar el cliente de Twilio:', error.message);
-  twilio = null; // Evita que el servidor falle si Twilio no se puede inicializar
+  console.error('❌ Error al configurar Twilio:', error.message);
+  twilio = null;
 }
 
-// Función para enviar mensajes de WhatsApp usando Twilio.
+// Enviar mensajes de WhatsApp
 const sendWhatsAppMessage = async (to, message) => {
   if (!twilio) {
-    console.error('❌ Cliente de Twilio no está inicializado. No se puede enviar el mensaje.');
+    console.error('❌ Twilio no inicializado');
     return;
   }
   try {
@@ -58,80 +55,100 @@ const sendWhatsAppMessage = async (to, message) => {
     });
     console.log(`📤 Mensaje enviado a ${to}`);
   } catch (error) {
-    console.error('❌ Error enviando mensaje de WhatsApp:', error.message);
+    console.error('❌ Error al enviar mensaje de WhatsApp:', error.message);
   }
 };
 
-// Función para obtener la respuesta de OpenAI
-const getOpenAIResponse = async (message) => {
-  if (!OPENAI_API_KEY || !OPENAI_MODEL) {
-    console.error('❌ OPENAI_API_KEY o OPENAI_MODEL no están definidos.');
-    return 'Lo siento, no puedo procesar tu mensaje porque las credenciales de OpenAI no están configuradas.';
-  }
+// Función para interactuar con el asistente
+const callAssistant = async (userMessage) => {
   try {
-    console.log('🔍 Enviando solicitud a OpenAI...');
-    const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: OPENAI_MODEL,
-        messages: [
-          {
-            role: 'user',
-            content: message,
-          },
-        ],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
+    const threadRes = await axios.post('https://api.openai.com/v1/threads', {}, {
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
       }
-    );
-    console.log('🔍 Respuesta de OpenAI recibida');
-    return response.data.choices[0].message.content;
+    });
+
+    const threadId = threadRes.data.id;
+
+    await axios.post(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+      role: 'user',
+      content: userMessage
+    }, {
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const runRes = await axios.post(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+      assistant_id: process.env.OPENAI_ASSISTANT_ID
+    }, {
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const runId = runRes.data.id;
+    let status = 'in_progress';
+
+    while (status !== 'completed' && status !== 'failed') {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const runStatus = await axios.get(
+        `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,
+        { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }
+      );
+      status = runStatus.data.status;
+    }
+
+    if (status === 'completed') {
+      const messagesRes = await axios.get(
+        `https://api.openai.com/v1/threads/${threadId}/messages`,
+        { headers: { Authorization: `Bearer ${OPENAI_API_KEY}` } }
+      );
+      const lastMessage = messagesRes.data.data.find(msg => msg.role === 'assistant');
+      return lastMessage?.content[0]?.text?.value || 'Respuesta no disponible.';
+    } else {
+      return 'El asistente no pudo generar una respuesta.';
+    }
   } catch (error) {
-    console.error('❌ Error desde OpenAI:', error.response?.data || error.message);
-    return 'Lo siento, ha ocurrido un error al procesar tu mensaje.';
+    console.error('❌ Error en callAssistant:', error.response?.data || error.message);
+    return 'Ha ocurrido un error con el asistente.';
   }
 };
 
-// Ruta del webhook para recibir mensajes de Twilio.
+// Webhook de Twilio
 app.post('/webhook', async (req, res) => {
   try {
-    console.log('🔍 Webhook recibido:', req.body);
-    
     const from = req.body.From?.replace('whatsapp:', '') || '';
     const message = req.body.Body || '';
-
     console.log(`📥 Mensaje recibido de ${from}: ${message}`);
 
     if (message) {
-      const aiResponse = await getOpenAIResponse(message);
+      const aiResponse = await callAssistant(message);
       await sendWhatsAppMessage(from, aiResponse);
     }
 
     res.status(200).send('OK');
   } catch (error) {
     console.error('❌ Error en webhook:', error.message);
-    res.status(200).send('Error procesado'); // Seguimos enviando 200 para que Twilio no reintente
+    res.status(200).send('Error procesado');
   }
 });
 
-// Ruta de prueba
+// Ruta principal
 app.get('/', (req, res) => {
-  console.log('🔍 Solicitud recibida en la ruta raíz');
   res.send('🟢 Servidor WhatsApp + OpenAI operativo.');
 });
 
-// Ruta de diagnóstico
+// Diagnóstico
 app.get('/test', (req, res) => {
-  console.log('🔍 Solicitud recibida en la ruta de diagnóstico');
   res.json({
     status: 'ok',
     envVars: {
       hasOpenAIKey: !!OPENAI_API_KEY,
-      hasOpenAIModel: !!OPENAI_MODEL,
+      hasAssistantId: !!process.env.OPENAI_ASSISTANT_ID,
       hasTwilioSID: !!TWILIO_ACCOUNT_SID,
       hasTwilioToken: !!TWILIO_AUTH_TOKEN,
       hasTwilioPhone: !!TWILIO_PHONE_NUMBER
@@ -139,53 +156,38 @@ app.get('/test', (req, res) => {
   });
 });
 
-// Manejo de errores
+// Error middleware
 app.use((err, req, res, next) => {
   console.error('❌ Error en Express:', err.message);
   res.status(500).send('Error interno en el servidor');
 });
 
-// Manejo de promesas no controladas
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Promesa rechazada no manejada:', reason);
+// Manejo de errores globales
+process.on('unhandledRejection', reason => {
+  console.error('❌ Promesa no manejada:', reason);
 });
-
-// Manejo de excepciones no capturadas
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', err => {
   console.error('❌ Excepción no capturada:', err.message);
-  // No terminamos el proceso para que Railway no reinicie constantemente
 });
 
-// Inicia servidor
-console.log('🔍 Intentando iniciar el servidor...');
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor activo en puerto: ${PORT}`);
-  console.log('RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN);
-}).on('error', (err) => {
-  console.error('❌ Error al iniciar el servidor:', err.message);
-
-  // ... (código anterior sin cambios) ...
-
-// Inicia servidor
-console.log('🔍 Intentando iniciar el servidor...');
+// Iniciar servidor
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor activo en puerto: ${PORT}`);
+  console.log(`🚀 Servidor activo en el puerto ${PORT}`);
   console.log('RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN);
-}).on('error', (err) => {
+}).on('error', err => {
   console.error('❌ Error al iniciar el servidor:', err.message);
 });
 
-// Log periódico para confirmar que el servidor sigue activo
+// Confirmación periódica
 setInterval(() => {
   console.log('🔍 Servidor sigue activo...');
-}, 5000); // Log cada 5 segundos
+}, 5000);
 
-// Manejar el evento SIGTERM
+// Cierre ordenado
 process.on('SIGTERM', () => {
-  console.log('⚠️ Recibido SIGTERM. Cerrando el servidor...');
+  console.log('⚠️ SIGTERM recibido. Cerrando servidor...');
   server.close(() => {
     console.log('✅ Servidor cerrado correctamente.');
     process.exit(0);
   });
-});
 });
