@@ -58,12 +58,29 @@ const isPriceOrScheduleQuery = (message) => {
 
 // 🆕 Función para limpiar respuestas de referencias
 const cleanResponse = (response) => {
-  // Eliminar referencias como [4:0†source], [número:texto], etc.
+  // Eliminar referencias como [4:0†source], [número:texto], [4:0tsource], etc.
   let cleaned = response.replace(/\[\d+:\d+[^\]]*\]/g, '');
   // Eliminar referencias adicionales como (4:0†source) o similares
   cleaned = cleaned.replace(/\(\d+:\d+[^\)]*\)/g, '');
-  // Limpiar espacios extra y saltos de línea múltiples
-  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  // Eliminar patrones como {4:0tsource} con llaves
+  cleaned = cleaned.replace(/\{\d+:\d+[^\}]*\}/g, '');
+  // Eliminar patrones específicos al final como "【4:0†source】"
+  cleaned = cleaned.replace(/【[^\】]*】/g, '');
+  // Eliminar cualquier patrón número:número seguido de texto hasta espacio/final
+  cleaned = cleaned.replace(/\d+:\d+\w*[^\s]*/g, '');
+  // Eliminar "source" suelto al final
+  cleaned = cleaned.replace(/\bsource\b\.?\s*$/i, '');
+  // Eliminar "†source" específico
+  cleaned = cleaned.replace(/†source\.?\s*/gi, '');
+  // Limpiar espacios extra, saltos de línea múltiples y puntos duplicados
+  cleaned = cleaned.replace(/\s+/g, ' ').replace(/\.+/g, '.').trim();
+  // Eliminar punto final suelto si queda
+  if (cleaned.endsWith('.')) {
+    cleaned = cleaned.slice(0, -1).trim();
+    if (!cleaned.endsWith('.') && !cleaned.endsWith('?') && !cleaned.endsWith('!')) {
+      cleaned += '.';
+    }
+  }
   return cleaned;
 };
 
