@@ -26,6 +26,14 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
+// 🆕 CONFIGURACIÓN PARA HORARIOS Y PRECIOS
+const TICKET_URL = 'https://entradas.cuevadenerja.es/';
+const PRICE_SCHEDULE_KEYWORDS = [
+  'horario', 'horarios', 'hora', 'horas', 'abierto', 'cerrado', 'abre', 'cierra',
+  'precio', 'precios', 'tarifa', 'tarifas', 'cuesta', 'coste', 'costo', 'entrada', 'entradas',
+  'cuánto', 'cuanto', 'vale', 'euros', '€', 'gratis', 'gratuito', 'descuento'
+];
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -41,6 +49,34 @@ try {
   console.error('❌ Error al configurar Twilio:', error.message);
   twilio = null;
 }
+
+// 🆕 Función para detectar preguntas sobre horarios y precios
+const isPriceOrScheduleQuery = (message) => {
+  const lowerMessage = message.toLowerCase();
+  return PRICE_SCHEDULE_KEYWORDS.some(keyword => lowerMessage.includes(keyword));
+};
+
+// 🆕 Función para limpiar respuestas de referencias
+const cleanResponse = (response) => {
+  // Eliminar referencias como [4:0†source], [número:texto], etc.
+  let cleaned = response.replace(/\[\d+:\d+[^\]]*\]/g, '');
+  // Eliminar referencias adicionales como (4:0†source) o similares
+  cleaned = cleaned.replace(/\(\d+:\d+[^\)]*\)/g, '');
+  // Limpiar espacios extra y saltos de línea múltiples
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  return cleaned;
+};
+
+// 🆕 Respuesta predefinida para horarios y precios
+const getPriceScheduleResponse = () => {
+  return `Para consultar los horarios actualizados y precios de las entradas, te recomiendo visitar nuestra página oficial de venta de entradas donde encontrarás toda la información actualizada:
+
+${TICKET_URL}
+
+Allí podrás ver los horarios disponibles, diferentes tipos de entrada y realizar tu compra directamente.
+
+¿Hay algo más en lo que pueda ayudarte sobre la Cueva de Nerja?`;
+};
 
 // Enviar mensajes de WhatsApp
 const sendWhatsAppMessage = async (to, message) => {
@@ -100,9 +136,9 @@ const callAssistant = async (userMessage) => {
       );
       const lastMessage = messagesRes.data.data.find(msg => msg.role === 'assistant');
 
-      // 🔧 Eliminar referencias de fuente como [4:0†source]
+      // 🔧 Limpiar respuesta de referencias de fuente
       let rawResponse = lastMessage?.content[0]?.text?.value || 'Respuesta no disponible.';
-      let cleanedResponse = rawResponse.replace(/\[\d+:\d+[^\]]*\]/g, '').trim();
+      let cleanedResponse = cleanResponse(rawResponse);
       return cleanedResponse;
     } else {
       return 'El asistente no pudo generar una respuesta.';
@@ -121,8 +157,16 @@ app.post('/webhook', async (req, res) => {
     console.log(`📥 Mensaje recibido de ${from}: ${message}`);
 
     if (message) {
-      const aiResponse = await callAssistant(message);
-      await sendWhatsAppMessage(from, aiResponse);
+      // 🆕 VERIFICAR SI ES PREGUNTA SOBRE HORARIOS O PRECIOS
+      if (isPriceOrScheduleQuery(message)) {
+        console.log(`🎯 Detectada pregunta sobre horarios/precios de ${from}`);
+        const priceScheduleResponse = getPriceScheduleResponse();
+        await sendWhatsAppMessage(from, priceScheduleResponse);
+      } else {
+        // Usar el asistente para otras consultas
+        const aiResponse = await callAssistant(message);
+        await sendWhatsAppMessage(from, aiResponse);
+      }
     }
 
     res.status(200).send('OK');
@@ -147,7 +191,23 @@ app.get('/test', (req, res) => {
       hasTwilioSID: !!TWILIO_ACCOUNT_SID,
       hasTwilioToken: !!TWILIO_AUTH_TOKEN,
       hasTwilioPhone: !!TWILIO_PHONE_NUMBER
+    },
+    features: {
+      priceScheduleRedirect: true,
+      responseCleanup: true,
+      keywordsCount: PRICE_SCHEDULE_KEYWORDS.length
     }
+  });
+});
+
+// 🆕 Ruta para probar la detección de keywords
+app.get('/test-keywords/:message', (req, res) => {
+  const testMessage = req.params.message;
+  const isDetected = isPriceOrScheduleQuery(testMessage);
+  res.json({
+    message: testMessage,
+    detected: isDetected,
+    keywords: PRICE_SCHEDULE_KEYWORDS
   });
 });
 
@@ -169,6 +229,7 @@ process.on('uncaughtException', err => {
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor activo en el puerto ${PORT}`);
   console.log('RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN);
+  console.log(`🎯 Keywords configuradas: ${PRICE_SCHEDULE_KEYWORDS.length}`);
 }).on('error', err => {
   console.error('❌ Error al iniciar el servidor:', err.message);
 });
